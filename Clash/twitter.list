@@ -1,0 +1,4 @@
+payload:
+# > Twitter
+  - DOMAIN-KEYWORD, twitter
+  - DOMAIN-SUFFIX, twimg.com

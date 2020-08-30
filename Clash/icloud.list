@@ -1,4 +1,5 @@
-DOMAIN-SUFFIX, apple-cloudkit.com
-DOMAIN-SUFFIX, icloud.com
-DOMAIN-SUFFIX, icloud-content.com
-DOMAIN-SUFFIX, me.com
+payload:
+  - DOMAIN-SUFFIX, apple-cloudkit.com
+  - DOMAIN-SUFFIX, icloud.com
+  - DOMAIN-SUFFIX, icloud-content.com
+  - DOMAIN-SUFFIX, me.com

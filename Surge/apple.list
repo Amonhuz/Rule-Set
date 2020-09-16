@@ -1,4 +1,4 @@
-PROCESS-NAME, trustd 
+PROCESS-NAME, trustd
 PROCESS-NAME, storedownloadd
 
 USER-AGENT, *com.apple.mobileme.fmip1

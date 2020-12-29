@@ -1,5 +1,9 @@
 payload:
 # > Apple
+  - PROCESS-NAME, trustd*
+  - PROCESS-NAME, storedownloadd*
+  - PROCESS-NAME, gamed*
+
   - DOMAIN-SUFFIX, itunes.com
   - DOMAIN-SUFFIX, mzstatic.com
   - DOMAIN, iosapps.itunes.apple.com

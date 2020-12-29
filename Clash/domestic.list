@@ -1,4 +1,6 @@
 payload:
+# > UA
+
 # > Beplay
   - DOMAIN-KEYWORD, beplay
 
@@ -273,6 +275,3 @@ payload:
   - DOMAIN-SUFFIX, zmz002.com
 
   - IP-CIDR, 1.255.62.0/24, no-resolve
-
-# > CN
-  - DOMAIN-SUFFIX, cn

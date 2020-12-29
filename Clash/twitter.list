@@ -1,4 +1,8 @@
 payload:
 # > Twitter
+  - PROCESS-NAME, Tweetbot
+  - PROCESS-NAME, Twitter
+  - PROCESS-NAME, Twitterrific
+
   - DOMAIN-KEYWORD, twitter
   - DOMAIN-SUFFIX, twimg.com

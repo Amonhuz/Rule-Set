@@ -1,5 +1,5 @@
 payload:
-# > Apple NoChina CDN
+# > Apple_noChina_CDN
   - DOMAIN-SUFFIX, hls.itunes.apple.com
   - DOMAIN-SUFFIX, hls-amt.itunes.apple.com
   - DOMAIN-SUFFIX, audio-ssl.itunes.apple.com
@@ -10,6 +10,7 @@ payload:
   - DOMAIN, js-cdn.music.apple.com
 
   - DOMAIN, gspe1-ssl.ls.apple.com
+  - PROCESS-NAME, News
   - DOMAIN-SUFFIX, apple.news
   - DOMAIN, news-client.apple.com
   - DOMAIN, news-edge.apple.com

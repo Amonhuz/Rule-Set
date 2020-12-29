@@ -22,6 +22,8 @@ payload:
 # > letv
   - DOMAIN-SUFFIX, api.mob.app.letv.com
 
+# > MOO
+
 # > NeteaseMusic
   - DOMAIN-SUFFIX, 163yun.com
   - DOMAIN-SUFFIX, music.126.net

@@ -1,6 +1,6 @@
 payload:
 # > Apple TV +
-  - DOMAIN-SUFFIX, tv.apple.com
+  # - DOMAIN-SUFFIX, tv.apple.com
 
 # > ABC
   - DOMAIN-SUFFIX, edgedatg.com

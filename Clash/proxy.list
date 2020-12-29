@@ -1,4 +1,17 @@
 payload:
+# > Client
+  - PROCESS-NAME, Backup and Sync
+  - PROCESS-NAME, Day One
+  - PROCESS-NAME, Dropbox
+  - PROCESS-NAME, LINE
+  - PROCESS-NAME, node-webkit
+  - PROCESS-NAME, Resilio Sync
+  - PROCESS-NAME, Tweetbot
+  - PROCESS-NAME, Twitter
+  - PROCESS-NAME, Twitterrific
+
+# > UA
+
 # > Line
   - DOMAIN-SUFFIX, lin.ee
   - DOMAIN-SUFFIX, line.me
@@ -611,6 +624,7 @@ payload:
   - DOMAIN-SUFFIX, zynamics.com
 
 # > Force some   - DOMAINs which are fucked by GFW while resolving DNS, or do not respect the system Proxy
+
   - DOMAIN-KEYWORD, appledaily
   - DOMAIN-KEYWORD, beetalk
   - DOMAIN-KEYWORD, blogspot

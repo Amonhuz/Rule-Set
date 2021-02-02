@@ -5,6 +5,4 @@ USER-AGENT, *splashtop*
 USER-AGENT, *Splashtop*
 DOMAIN-KEYWORD, splashtop
 
-DOMAIN-SUFFIX, plex.tv
-
-DOMAIN-SUFFIX, jumpdesktop.com
+DOMAIN-SUFFIX, 115.com

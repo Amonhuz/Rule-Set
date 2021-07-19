@@ -1,10 +1,6 @@
 # > MySelf_NoProxy
 DOMAIN-SUFFIX, gamersky.com
 
-USER-AGENT, *splashtop*
-USER-AGENT, *Splashtop*
-DOMAIN-KEYWORD, splashtop
-
 DOMAIN-SUFFIX, 115.com
 DOMAIN-SUFFIX, battle.net
 DOMAIN-SUFFIX, battlenet.com

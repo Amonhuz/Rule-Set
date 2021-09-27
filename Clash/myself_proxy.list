@@ -2,3 +2,6 @@ payload:
 # > MySelf_Proxy
   - DOMAIN-SUFFIX, nexitally.com
   - DOMAIN-SUFFIX, nssurge.com
+  - DOMAIN-SUFFIX, battle.net
+  - DOMAIN-SUFFIX, battlenet.com
+  

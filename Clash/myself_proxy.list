@@ -4,4 +4,4 @@ payload:
   - DOMAIN-SUFFIX, nssurge.com
   - DOMAIN-SUFFIX, battle.net
   - DOMAIN-SUFFIX, battlenet.com
-  - DOMAIN-SUFFIX, ifixit
+  - DOMAIN-KEYWORD, ifixit

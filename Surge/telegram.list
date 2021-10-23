@@ -11,6 +11,8 @@
 PROCESS-NAME, nekox.messenger
 PROCESS-NAME, org.telegram.messenger
 PROCESS-NAME, telegram.exe
+DOMAIN-KEYWORD, nicegram
+DOMAIN-KEYWORD, telegram
 DOMAIN-SUFFIX, comments.app
 DOMAIN-SUFFIX, graph.org
 DOMAIN-SUFFIX, stel.com
@@ -21,8 +23,6 @@ DOMAIN-SUFFIX, telegra.ph
 DOMAIN-SUFFIX, telesco.pe
 DOMAIN-SUFFIX, tg.dev
 DOMAIN-SUFFIX, tx.me
-DOMAIN-KEYWORD, nicegram
-DOMAIN-KEYWORD, telegram
 IP-CIDR, 109.239.140.0/24, no-resolve
 IP-CIDR, 149.154.160.0/20, no-resolve
 IP-CIDR, 185.76.151.0/24, no-resolve

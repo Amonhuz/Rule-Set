@@ -1,1 +1,12 @@
 
+# > MySelf_Proxy
+USER-AGENT, *Vengeance*
+USER-AGENT, *Origins*
+USER-AGENT, *Twitch*
+USER-AGENT, *VoiceApp*
+USER-AGENT, *GVDialer*
+USER-AGENT, *Reeder*
+
+DOMAIN-SUFFIX, nexitally.com
+DOMAIN-SUFFIX, nssurge.com
+DOMAIN-SUFFIX, ifixit.com

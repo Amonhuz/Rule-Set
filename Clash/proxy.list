@@ -10,6 +10,8 @@ payload:
   - PROCESS-NAME, Twitter
   - PROCESS-NAME, Twitterrific
 
+  - DOMAIN-SUFFIX, rarbg.to
+
 # > UA
 
 # > Line

@@ -5,3 +5,4 @@ payload:
   - DOMAIN-SUFFIX, battle.net
   - DOMAIN-SUFFIX, battlenet.com
   - DOMAIN-KEYWORD, ifixit
+  - DOMAIN-KEYWORD, emeditor

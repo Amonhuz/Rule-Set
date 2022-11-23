@@ -1,5 +1,6 @@
 payload:
 # > Apple
+  - DOMAIN-SUFFIX, .jp
   - DOMAIN-SUFFIX, co.jp
   - DOMAIN-SUFFIX, e-hentai.prg
   - DOMAIN-SUFFIX, exhentai.org
@@ -8,5 +9,3 @@ payload:
   - DOMAIN-SUFFIX, amazon.co.jp
   - DOMAIN-SUFFIX, fc2.com
   - DOMAIN-SUFFIX, pixiv.net
-  - DOMAIN-SUFFIX, mxomo.com
-  - DOMAIN-SUFFIX, mox.moe

@@ -47,3 +47,4 @@ payload:
   - DOMAIN-KEYWORD,jmsooo
   - DOMAIN-KEYWORD,odysseyplus
   - PROCESS-NAME,com.mb.android
+  - DOMAIN-KEYWORD,emby.media

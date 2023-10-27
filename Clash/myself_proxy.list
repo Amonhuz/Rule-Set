@@ -1,8 +1,9 @@
 payload:
 # > MySelf_Proxy
-  - DOMAIN-SUFFIX, nexitally.com
-  - DOMAIN-SUFFIX, nssurge.com
-  - DOMAIN-SUFFIX, battle.net
-  - DOMAIN-SUFFIX, battlenet.com
+#  - DOMAIN-SUFFIX, nexitally.com
+#  - DOMAIN-SUFFIX, nssurge.com
+#  - DOMAIN-SUFFIX, battle.net
+#  - DOMAIN-SUFFIX, battlenet.com
+  - DOMAIN-SUFFIX, openai.com
   - DOMAIN-KEYWORD, ifixit
   - DOMAIN-KEYWORD, emeditor

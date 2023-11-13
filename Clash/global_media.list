@@ -108,9 +108,6 @@ payload:
   - DOMAIN-SUFFIX,disneyplus.com.ssl.sc.omtrdc.net
   - DOMAIN-SUFFIX,disneystreaming.com
   - DOMAIN-SUFFIX,dmc.nico
-  - DOMAIN-SUFFIX,dmm-extension.com
-  - DOMAIN-SUFFIX,dmm.co.jp
-  - DOMAIN-SUFFIX,dmm.com
   - DOMAIN-SUFFIX,dnitv.com
   - DOMAIN-SUFFIX,dssott.com
   - DOMAIN-SUFFIX,dzcdn.net

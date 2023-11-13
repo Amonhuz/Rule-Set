@@ -6,6 +6,7 @@ payload:
   - DOMAIN-SUFFIX, exhentai.org
   - DOMAIN-SUFFIX, dmm.co.jp
   - DOMAIN-SUFFIX, dmm.com
+  - DOMAIN-SUFFIX, dmm-extension.com
   - DOMAIN-SUFFIX, amazon.co.jp
   - DOMAIN-SUFFIX, fc2.com
   - DOMAIN-KEYWORD, fc2.com

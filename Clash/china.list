@@ -19,7 +19,6 @@ payload:
   - DOMAIN,download.jetbrains.com
   - DOMAIN,images-cn.ssl-images-amazon.com
   - DOMAIN,ip.istatmenus.app
-  - DOMAIN,mtalk.google.com
   - DOMAIN,origin-a.akamaihd.ne
   - DOMAIN,origin-a.akamaihd.net
   - DOMAIN,outlook.office365.com

@@ -9,5 +9,5 @@ payload:
   - DOMAIN-SUFFIX, fc2.com
   - DOMAIN-KEYWORD, fc2.com
   - DOMAIN-SUFFIX, pixiv.net
-  - DOMAIN-SUFFIX, jp
   - DOMAIN-SUFFIX, co.jp
+  - DOMAIN-SUFFIX, jp

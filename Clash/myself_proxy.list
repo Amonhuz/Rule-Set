@@ -7,3 +7,5 @@ payload:
   - DOMAIN-SUFFIX,openai.com
   - DOMAIN-KEYWORD,ifixit
   - DOMAIN-KEYWORD,emeditor
+  - DOMAIN-SUFFIX,koyeb.com
+  - DOMAIN-SUFFIX,koyeb.app

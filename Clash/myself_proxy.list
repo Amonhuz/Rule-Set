@@ -9,3 +9,4 @@ payload:
   - DOMAIN-KEYWORD,emeditor
   - DOMAIN-SUFFIX,koyeb.com
   - DOMAIN-SUFFIX,koyeb.app
+  - PROCESS-NAME,CurseForge.exe

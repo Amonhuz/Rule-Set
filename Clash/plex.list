@@ -2,3 +2,4 @@ payload:
   - DOMAIN-KEYWORD,plex
   - DOMAIN-KEYWORD,emby
   - DOMAIN-SUFFIX,api.ipify.org
+  - DOMAIN-SUFFIX,api64.ipify.org

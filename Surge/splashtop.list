@@ -1,5 +1,2 @@
 # > Remote Control
-
-USER-AGENT,*splashtop*
-USER-AGENT,*Splashtop*
 DOMAIN-KEYWORD,splashtop

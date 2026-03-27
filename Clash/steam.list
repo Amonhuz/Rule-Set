@@ -60,8 +60,4 @@ payload:
   - DOMAIN-KEYWORD,steambroadcast
   - DOMAIN-KEYWORD,steamstore
   - DOMAIN-KEYWORD,steamuserimages
-  - DOMAIN-SUFFIX,cm.steampowered.com
-  - DOMAIN-SUFFIX,steamchina.com
-  - DOMAIN-SUFFIX,steamcontent.com
-  - DOMAIN-SUFFIX,steamserver.net
-  - DOMAIN-SUFFIX,steamusercontent.com
+  - DOMAIN-KEYWORD,steamserver

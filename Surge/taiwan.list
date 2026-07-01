@@ -2,8 +2,8 @@
 USER-AGENT, Anime*
 USER-AGENT, CaricatureManGroup*
 
-DOMAIN, bahamut.akamaized.net
-DOMAIN, .hinet.net
+DOMAIN-SUFFIX, bahamut.akamaized.net
+DOMAIN-SUFFIX, .hinet.net
 DOMAIN-SUFFIX, bahamut.com.tw
 DOMAIN-SUFFIX, gamer.com.tw
 DOMAIN-SUFFIX, hinet.net

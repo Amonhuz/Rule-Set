@@ -1,6 +1,11 @@
 payload:
 # > Taiwan
+  - DOMAIN-SUFFIX,bahamut.akamaized.net
+  - DOMAIN-SUFFIX,gamer-cds.cdn.hinet.net
+  - DOMAIN-SUFFIX,gamer2-cds.cdn.hinet.net
   - DOMAIN-SUFFIX,bahamut.com.tw
   - DOMAIN-SUFFIX,gamer.com.tw
   - DOMAIN-SUFFIX,hinet.net
-  - DOMAIN-SUFFIX,com.tw
+  - DOMAIN-SUFFIX,.com.tw
+  - DOMAIN-SUFFIX,umeng.com
+  - DOMAIN-SUFFIX,cdnmanhua.net

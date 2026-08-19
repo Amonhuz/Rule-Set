@@ -1,7 +1,7 @@
 payload:
 # > Japan
-  - DOMAIN-SUFFIX,.jp
-  - DOMAIN-SUFFIX,.co.jp
+  - DOMAIN-KEYWORD,.jp
+  - DOMAIN-KEYWORD,.co.jp
   - DOMAIN-SUFFIX,e-hentai.prg
   - DOMAIN-SUFFIX,exhentai.org
   - DOMAIN-SUFFIX,dmm.co.jp

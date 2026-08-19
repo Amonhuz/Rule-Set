@@ -1,7 +1,5 @@
 payload:
 # > Japan
-  - DOMAIN-KEYWORD,.jp
-  - DOMAIN-KEYWORD,.co.jp
   - DOMAIN-SUFFIX,e-hentai.prg
   - DOMAIN-SUFFIX,exhentai.org
   - DOMAIN-SUFFIX,dmm.co.jp
@@ -17,3 +15,5 @@ payload:
   - DOMAIN-SUFFIX,pximg.net
   - DOMAIN-SUFFIX,jpmag.net
   - DOMAIN-SUFFIX,store-jp.nintendo.com
+  - DOMAIN-SUFFIX,.jp
+  - DOMAIN-SUFFIX,.co.jp

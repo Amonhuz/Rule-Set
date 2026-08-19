@@ -7,4 +7,4 @@ payload:
   - DOMAIN-SUFFIX,hinet.net
   - DOMAIN-SUFFIX,umeng.com
   - DOMAIN-SUFFIX,cdnmanhua.net
-  - DOMAIN-SUFFIX,.com.tw
+  - DOMAIN-WILDCARD,*.com.tw

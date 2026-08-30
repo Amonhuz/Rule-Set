@@ -6,12 +6,12 @@
  * =========================================================
  *
  * [Proxy Group]
- * Lumina = select, policy-path=https://example.com/sub/xxx
- * Kendeji = select, policy-path=https://example.com/sub/yyy
+ * xxx = select, policy-path=https://example.com/sub/xxx
+ * yyy = select, policy-path=https://example.com/sub/yyy
  *
  * [Panel]
- * Lumina = script-name=机场流量, update-interval=1
- * Kendeji = script-name=机场流量, update-interval=1
+ * xxx = script-name=机场流量, update-interval=1
+ * yyy = script-name=机场流量, update-interval=1
  *
  * [Script]
  * 机场流量 = type=generic, script-path=https://raw.githubusercontent.com/xxx/airport-traffic.js, timeout=15, script-update-interval=43200

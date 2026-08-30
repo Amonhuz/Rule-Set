@@ -1,45 +1,89 @@
 /*
  * Surge Airport Traffic Panel
  *
- * 使用方式：
- *   Panel 名称必须与对应 [Proxy Group] 名称完全一致。
+ * =========================================================
+ * 使用方式
+ * =========================================================
+ *
+ * [Proxy Group]
+ * Lumina = select, policy-path=https://example.com/sub/xxx
+ * Kendeji = select, policy-path=https://example.com/sub/yyy
+ *
+ * [Panel]
+ * Lumina = script-name=机场流量, update-interval=1
+ * Kendeji = script-name=机场流量, update-interval=1
+ *
+ * [Script]
+ * 机场流量 = type=generic, script-path=https://raw.githubusercontent.com/xxx/airport-traffic.js, timeout=15, script-update-interval=43200
+ *
+ *
+ * 要求：
+ *   Panel 名称必须与对应的 [Proxy Group] 名称完全一致。
+ *
  *
  * 工作流程：
+ *
  *   $input.panelName
  *          ↓
- *   当前 Surge Profile
+ *   读取当前 Surge Profile（sensitive=1）
  *          ↓
- *   同名 [Proxy Group]
+ *   找到同名 [Proxy Group]
  *          ↓
- *   policy-path
+ *   提取 policy-path
  *          ↓
  *   请求机场订阅
  *          ↓
- *   Subscription-Userinfo
+ *   读取 Subscription-Userinfo
+ *          ↓
+ *   生成 Panel
+ *
  *
  * 标题优先级：
+ *
  *   1. Profile-Title
- *   2. Content-Disposition filename* / filename
- *   3. $input.panelName
+ *   2. Content-Disposition filename*
+ *   3. Content-Disposition filename
+ *   4. $input.panelName
+ *
+ *
+ * Panel 示例：
+ *
+ *   Lumina
+ *
+ *   剩余：326.47 GB（65.3%）
+ *   已用：173.53 GB（34.7%）
+ *   总量：500.00 GB
+ *   重置：剩余 12 天
+ *   到期：2026-12-31
  */
 
-const UA_LIST = [
+
+/* =========================================================
+ * 配置
+ * ========================================================= */
+
+const USER_AGENTS = [
   "Quantumult X",
   "Surge"
 ];
 
 const HTTP_TIMEOUT = 6;
 
-let panelName = "订阅信息";
+const DEFAULT_TITLE = "订阅信息";
 
 
-(async () => {
+/* =========================================================
+ * Main
+ * ========================================================= */
+
+(async function () {
+
+  let panelName = DEFAULT_TITLE;
+
   try {
 
     /*
-     * =================================================
-     * 1. 获取当前 Panel 名称
-     * =================================================
+     * 1. 获取 Panel 名称
      */
 
     panelName = getPanelName();
@@ -52,328 +96,146 @@ let panelName = "订阅信息";
 
 
     /*
-     * =================================================
-     * 2. 读取当前 Profile
-     * =================================================
+     * 2. 获取当前完整 Profile
      *
-     * 优先 sensitive=0。
+     * 必须使用 sensitive=1。
      *
-     * 通常 policy-path 不会被隐藏。
-     * 如果被遮罩，再读取 sensitive=1。
+     * sensitive=0 会使 policy-path
+     * 等敏感内容可能变成：
+     *
+     * https://masked/
      */
 
-    let profile =
-      await getProfile(false);
+    const profile =
+      await getCurrentProfile();
 
-    let subURL =
+
+    /*
+     * 3. 从同名 Proxy Group 获取 policy-path
+     */
+
+    const subscriptionURL =
       findPolicyPath(
         profile,
         panelName
       );
 
 
-    if (
-      subURL &&
-      /\*{3,}|<masked>|<redacted>/i.test(
-        subURL
-      )
-    ) {
-      profile =
-        await getProfile(true);
-
-      subURL =
-        findPolicyPath(
-          profile,
-          panelName
-        );
-    }
-
-
-    if (!subURL) {
+    if (!subscriptionURL) {
       throw new Error(
-        "未找到同名 [Proxy Group] 或 policy-path：" +
-        panelName
+        "未找到同名 Proxy Group 的 policy-path"
       );
     }
 
 
     if (
       !/^https?:\/\//i.test(
-        subURL
+        subscriptionURL
       )
     ) {
       throw new Error(
-        "policy-path 不是 HTTP(S) 订阅地址"
+        "policy-path 不是有效的 HTTP(S) 地址"
       );
     }
 
 
     /*
-     * =================================================
-     * 3. 请求订阅
-     * =================================================
+     * 额外防御：
+     * 不应该再出现 masked，
+     * 若出现则直接报错，不发起错误请求。
      */
 
-    const {
-      response,
-      userInfo
-    } =
-      await fetchSubscription(
-        subURL
+    if (
+      isMaskedURL(
+        subscriptionURL
+      )
+    ) {
+      throw new Error(
+        "Surge 返回的 policy-path 仍处于脱敏状态"
       );
-
-
-    const headers =
-      response.headers || {};
+    }
 
 
     /*
-     * =================================================
-     * 4. 自动识别机场名称
-     * =================================================
+     * 4. 请求订阅
      */
 
-    const title =
+    const subscription =
+      await fetchSubscription(
+        subscriptionURL
+      );
+
+
+    const response =
+      subscription.response;
+
+    const userInfoHeader =
+      subscription.userInfo;
+
+
+    /*
+     * 5. 自动识别机场名称
+     */
+
+    const airportName =
       getAirportName(
-        headers
+        response.headers
       ) ||
       panelName;
 
 
     /*
-     * =================================================
-     * 5. 解析 Subscription-Userinfo
-     * =================================================
+     * 6. 解析 Subscription-Userinfo
      */
 
     const info =
       parseUserInfo(
-        userInfo
+        userInfoHeader
       );
 
 
-    for (
-      const key of [
-        "upload",
-        "download",
-        "total"
-      ]
-    ) {
-      if (
-        !Number.isFinite(
-          info[key]
-        ) ||
-        info[key] < 0
-      ) {
-        throw new Error(
-          "Subscription-Userinfo 缺少或无法解析 " +
-          key
-        );
-      }
-    }
+    validateTrafficInfo(
+      info
+    );
 
 
     /*
-     * =================================================
-     * 6. 流量计算
-     * =================================================
+     * 7. 构建 Panel 内容
      */
 
-    const used =
-      info.upload +
-      info.download;
-
-    const total =
-      info.total;
-
-    const remaining =
-      Math.max(
-        total - used,
-        0
+    const content =
+      buildPanelContent(
+        info
       );
 
 
-    let remainingText;
-
-    let usedText =
-      formatBytes(
-        used
-      );
-
-    let totalText;
-
-    let usedPct =
-      "--";
-
-    let remainPct =
-      "--";
-
-
-    if (
-      total > 0
-    ) {
-
-      remainingText =
-        formatBytes(
-          remaining
-        );
-
-      totalText =
-        formatBytes(
-          total
-        );
-
-
-      const percent =
-        clamp(
-          used /
-          total *
-          100,
-          0,
-          100
-        );
-
-
-      usedPct =
-        percent.toFixed(1) +
-        "%";
-
-      remainPct =
-        (
-          100 -
-          percent
-        ).toFixed(1) +
-        "%";
-
-    } else {
-
-      /*
-       * 常见机场中 total=0
-       * 通常表示不限量。
-       */
-
-      remainingText =
-        "不限量";
-
-      totalText =
-        "不限量";
-    }
-
-
     /*
-     * =================================================
-     * 7. 到期时间
-     * =================================================
-     */
-
-    const expireDate =
-      info.expire > 0
-        ? parseTimestamp(
-            info.expire
-          )
-        : null;
-
-
-    const expireText =
-      expireDate
-        ? formatDate(
-            expireDate
-          )
-        : "长期有效";
-
-
-    /*
-     * =================================================
-     * 8. 流量重置日
-     * =================================================
-     *
-     * 如果 Subscription-Userinfo
-     * 非标准扩展中包含：
-     *
-     * reset_day=
-     * reset-day=
-     *
-     * 则优先使用。
-     *
-     * 否则 fallback：
-     * 使用到期日期中的“日”作为每月重置日。
-     */
-
-    const resetDay =
-      validResetDay(
-        info.reset_day
-      )
-        ? info.reset_day
-        : expireDate
-          ? expireDate.getDate()
-          : null;
-
-
-    const resetText =
-      resetDay
-        ? formatReset(
-            resetDay
-          )
-        : "--";
-
-
-    /*
-     * =================================================
-     * 9. 输出 Panel
-     * =================================================
+     * 8. 输出
      */
 
     $done({
-
-      title: title,
-
-      content:
-
-        "剩余：" +
-        remainingText +
-        (
-          total > 0
-            ? "（" +
-              remainPct +
-              "）"
-            : ""
-        ) +
-
-        "\n已用：" +
-        usedText +
-        (
-          total > 0
-            ? "（" +
-              usedPct +
-              "）"
-            : ""
-        ) +
-
-        "\n总量：" +
-        totalText +
-
-        "\n重置：" +
-        resetText +
-
-        "\n到期：" +
-        expireText
-
+      title: airportName,
+      content: content
     });
 
 
-  } catch (e) {
+  } catch (error) {
 
     const message =
-      e &&
-      e.message
-        ? e.message
-        : String(e);
+      error &&
+      error.message
+        ? error.message
+        : String(error);
 
 
     /*
-     * 不记录 Profile
-     * 不记录订阅 URL
-     * 避免订阅凭据进入日志。
+     * 不输出：
+     *
+     * - Profile
+     * - policy-path
+     * - 订阅 Token
+     *
+     * 避免敏感信息进入日志。
      */
 
     console.log(
@@ -383,33 +245,24 @@ let panelName = "订阅信息";
 
 
     $done({
-
-      title:
-        panelName,
-
-      content:
-        message,
-
-      style:
-        "error"
-
+      title: panelName,
+      content: message,
+      style: "error"
     });
+
   }
 
 })();
 
 
-/*
- * =====================================================
+/* =========================================================
  * Panel
- * =====================================================
- */
+ * ========================================================= */
 
 function getPanelName() {
 
   if (
-    typeof $input ===
-      "undefined" ||
+    typeof $input === "undefined" ||
     !$input ||
     !$input.panelName
   ) {
@@ -417,32 +270,36 @@ function getPanelName() {
   }
 
 
-  return String(
-    $input.panelName
-  ).trim();
+  const name =
+    String(
+      $input.panelName
+    ).trim();
+
+
+  return name || null;
 }
 
 
-/*
- * =====================================================
+/* =========================================================
  * Surge HTTP API
- * =====================================================
- */
+ * ========================================================= */
 
-function httpAPI(
+function callHTTPAPI(
   method,
   path,
-  body = {}
+  body
 ) {
 
   return new Promise(
-    resolve => {
+    function (resolve) {
 
       $httpAPI(
         method,
         path,
-        body,
-        resolve
+        body || {},
+        function (result) {
+          resolve(result);
+        }
       );
 
     }
@@ -450,91 +307,128 @@ function httpAPI(
 }
 
 
-async function getProfile(
-  sensitive
-) {
+/*
+ * 获取当前完整 Profile。
+ *
+ * 使用 sensitive=1，
+ * 避免 policy-path 被替换成 https://masked/
+ */
+
+async function getCurrentProfile() {
 
   const result =
-    await httpAPI(
-
+    await callHTTPAPI(
       "GET",
-
       "/v1/profiles/current",
-
       {
-        sensitive:
-          sensitive
-            ? 1
-            : 0
+        sensitive: 1
       }
-
     );
 
 
-  if (
-    !result ||
-    typeof result.profile !==
-      "string"
-  ) {
-
+  if (!result) {
     throw new Error(
-      "无法通过 Surge HTTP API 读取当前 Profile"
+      "无法读取当前 Surge Profile"
     );
   }
 
 
-  return result.profile;
+  /*
+   * 当前 Surge 通常返回：
+   *
+   * {
+   *   profile: "..."
+   * }
+   *
+   * 同时兼容可能存在的其他字段名称。
+   */
+
+  const profile =
+    typeof result.profile === "string"
+      ? result.profile
+
+      : typeof result.originalProfile === "string"
+        ? result.originalProfile
+
+        : typeof result.content === "string"
+          ? result.content
+
+          : null;
+
+
+  if (!profile) {
+    throw new Error(
+      "Surge HTTP API 未返回 Profile 内容"
+    );
+  }
+
+
+  return profile;
 }
 
 
-/*
- * =====================================================
- * 查找同名 Proxy Group 的 policy-path
- * =====================================================
- */
+/* =========================================================
+ * Proxy Group / policy-path
+ * ========================================================= */
 
 function findPolicyPath(
   profile,
-  groupName
+  targetGroupName
 ) {
 
+  /*
+   * 移除 UTF-8 BOM
+   */
+
+  const text =
+    String(profile).replace(
+      /^\uFEFF/,
+      ""
+    );
+
+
   const lines =
-    String(profile)
-      .replace(
-        /^\uFEFF/,
-        ""
-      )
-      .split(
-        /\r?\n/
-      );
+    text.split(
+      /\r?\n/
+    );
 
 
-  let inSection =
+  let inProxyGroupSection =
     false;
 
 
   for (
-    const raw of lines
+    let i = 0;
+    i < lines.length;
+    i++
   ) {
 
+    const rawLine =
+      lines[i];
+
     const line =
-      raw.trim();
+      rawLine.trim();
+
+
+    if (!line) {
+      continue;
+    }
 
 
     /*
      * Section
      */
 
-    const section =
+    const sectionMatch =
       line.match(
-        /^\[([^\]]+)\]$/
+        /^\[\s*([^\]]+?)\s*\]$/
       );
 
 
-    if (section) {
+    if (sectionMatch) {
 
-      inSection =
-        section[1]
+      inProxyGroupSection =
+        sectionMatch[1]
           .trim()
           .toLowerCase() ===
         "proxy group";
@@ -543,100 +437,63 @@ function findPolicyPath(
     }
 
 
+    if (!inProxyGroupSection) {
+      continue;
+    }
+
+
+    /*
+     * 注释
+     */
+
     if (
-      !inSection ||
-      !line
+      line.startsWith("#") ||
+      line.startsWith(";") ||
+      line.startsWith("//")
     ) {
       continue;
     }
 
 
     /*
-     * 跳过注释
+     * GroupName = ...
      */
 
-    if (
-      /^(#|;|\/\/)/.test(
-        line
-      )
-    ) {
+    const equalIndex =
+      rawLine.indexOf("=");
+
+
+    if (equalIndex < 0) {
       continue;
     }
 
 
-    /*
-     * 找策略组名称
-     */
-
-    const eq =
-      raw.indexOf(
-        "="
-      );
-
-
-    if (
-      eq < 0
-    ) {
-      continue;
-    }
-
-
-    const name =
-      raw
+    const groupName =
+      rawLine
         .slice(
           0,
-          eq
+          equalIndex
         )
         .trim();
 
 
     if (
-      name !==
-      groupName
+      groupName !==
+      targetGroupName
     ) {
       continue;
     }
 
 
-    /*
-     * 查找 policy-path
-     *
-     * 同时支持：
-     *
-     * policy-path=https://...
-     *
-     * policy-path="https://..."
-     *
-     * policy-path='https://...'
-     */
-
-    const rhs =
-      raw.slice(
-        eq + 1
+    const definition =
+      rawLine.slice(
+        equalIndex + 1
       );
 
 
-    const match =
-      rhs.match(
-
-        /(?:^|,)\s*policy-path\s*=\s*(?:"([^"]+)"|'([^']+)'|([^,\s]+))/i
-
-      );
-
-
-    if (
-      !match
-    ) {
-      return null;
-    }
-
-
-    return (
-      match[1] ||
-      match[2] ||
-      match[3] ||
-      ""
-    ).trim();
+    return extractPolicyPath(
+      definition
+    );
   }
 
 
@@ -645,37 +502,96 @@ function findPolicyPath(
 
 
 /*
- * =====================================================
- * HTTP
- * =====================================================
+ * 支持：
+ *
+ * policy-path=https://example.com/sub
+ *
+ * policy-path="https://example.com/sub"
+ *
+ * policy-path='https://example.com/sub'
+ *
+ * 也支持后面继续存在：
+ *
+ * , update-interval=3600
+ * , policy-regex-filter=...
  */
+
+function extractPolicyPath(
+  definition
+) {
+
+  const match =
+    String(definition).match(
+
+      /(?:^|,)\s*policy-path\s*=\s*(?:"([^"]*)"|'([^']*)'|(.+?))(?=\s*,\s*[A-Za-z][A-Za-z0-9_-]*\s*=|\s*$)/i
+
+    );
+
+
+  if (!match) {
+    return null;
+  }
+
+
+  const value =
+    (
+      match[1] ||
+      match[2] ||
+      match[3] ||
+      ""
+    ).trim();
+
+
+  return value || null;
+}
+
+
+function isMaskedURL(
+  url
+) {
+
+  const text =
+    String(url).toLowerCase();
+
+
+  return (
+    text === "https://masked/" ||
+    text === "http://masked/" ||
+    text.indexOf("<masked>") !== -1 ||
+    text.indexOf("<redacted>") !== -1 ||
+    /\*{3,}/.test(text)
+  );
+}
+
+
+/* =========================================================
+ * HTTP Client
+ * ========================================================= */
 
 function httpGet(
   options
 ) {
 
   return new Promise(
-    (
+    function (
       resolve,
       reject
-    ) => {
+    ) {
 
       $httpClient.get(
-
         options,
 
-        (
+        function (
           error,
-          response
-        ) => {
+          response,
+          data
+        ) {
 
           if (error) {
 
             reject(
               new Error(
-                String(
-                  error
-                )
+                String(error)
               )
             );
 
@@ -683,13 +599,11 @@ function httpGet(
           }
 
 
-          if (
-            !response
-          ) {
+          if (!response) {
 
             reject(
               new Error(
-                "未收到订阅服务器响应"
+                "未收到服务器响应"
               )
             );
 
@@ -697,12 +611,11 @@ function httpGet(
           }
 
 
-          resolve(
-            response
-          );
-
+          resolve({
+            response: response,
+            data: data
+          });
         }
-
       );
 
     }
@@ -710,52 +623,54 @@ function httpGet(
 }
 
 
+/* =========================================================
+ * 订阅请求
+ * ========================================================= */
+
 /*
- * =====================================================
- * 请求订阅
- * =====================================================
+ * 部分机场会根据 User-Agent
+ * 决定订阅格式或是否返回 Subscription-Userinfo。
  *
- * 某些机场会根据 UA
- * 决定是否返回 Subscription-Userinfo。
+ * 当前顺序：
  *
- * 优先：
- * Quantumult X
+ * 1. Quantumult X
+ * 2. Surge
  *
- * fallback：
- * Surge
+ * 一旦获取到 Subscription-Userinfo，
+ * 就立即停止，不会继续发第二次请求。
  */
 
 async function fetchSubscription(
   url
 ) {
 
-  let lastResponse =
-    null;
-
   let lastError =
     null;
 
+  let receivedValidHTTPResponse =
+    false;
+
 
   for (
-    const ua of
-    UA_LIST
+    let i = 0;
+    i < USER_AGENTS.length;
+    i++
   ) {
+
+    const userAgent =
+      USER_AGENTS[i];
+
 
     try {
 
-      const response =
+      const result =
         await httpGet({
 
           url: url,
 
           headers: {
-
-            "User-Agent":
-              ua,
-
-            "Accept":
-              "*/*"
-
+            "User-Agent": userAgent,
+            "Accept": "*/*"
           },
 
           timeout:
@@ -764,16 +679,20 @@ async function fetchSubscription(
         });
 
 
-      lastResponse =
-        response;
+      const response =
+        result.response;
 
 
       const status =
         Number(
-          response.status ||
-          0
+          response.status || 0
         );
 
+
+      /*
+       * $httpClient 默认自动跟随重定向。
+       * 正常情况下最终应为 2xx。
+       */
 
       if (
         status < 200 ||
@@ -790,44 +709,42 @@ async function fetchSubscription(
       }
 
 
+      receivedValidHTTPResponse =
+        true;
+
+
       const userInfo =
         getHeader(
-
           response.headers,
-
           "subscription-userinfo"
-
         );
 
 
-      if (
-        userInfo
-      ) {
+      if (userInfo) {
 
         return {
-
-          response:
-            response,
-
-          userInfo:
-            userInfo
-
+          response: response,
+          userInfo: userInfo
         };
+
       }
 
 
-    } catch (e) {
+    } catch (error) {
 
       lastError =
-        e;
+        error;
 
     }
   }
 
 
-  if (
-    lastResponse
-  ) {
+  /*
+   * 至少成功收到过 HTTP 响应，
+   * 但所有 UA 都没有 userinfo。
+   */
+
+  if (receivedValidHTTPResponse) {
 
     throw new Error(
       "订阅响应中没有 Subscription-Userinfo"
@@ -836,12 +753,17 @@ async function fetchSubscription(
   }
 
 
+  /*
+   * 所有请求均失败。
+   */
+
   throw new Error(
 
     "订阅请求失败" +
 
     (
-      lastError
+      lastError &&
+      lastError.message
         ? "：" +
           lastError.message
         : ""
@@ -851,34 +773,82 @@ async function fetchSubscription(
 }
 
 
-/*
- * =====================================================
- * Header
- * =====================================================
- */
+/* =========================================================
+ * Headers
+ * ========================================================= */
 
 function getHeader(
   headers,
-  name
+  targetName
 ) {
 
-  if (
-    !headers
-  ) {
+  if (!headers) {
     return null;
   }
 
 
   const target =
-    name.toLowerCase();
+    String(
+      targetName
+    ).toLowerCase();
 
+
+  /*
+   * 兼容 full-header-mode
+   * 数组形式：
+   *
+   * [
+   *   { field: "...", value: "..." }
+   * ]
+   */
+
+  if (
+    Array.isArray(
+      headers
+    )
+  ) {
+
+    for (
+      let i = 0;
+      i < headers.length;
+      i++
+    ) {
+
+      const item =
+        headers[i];
+
+
+      if (
+        item &&
+        item.field &&
+        String(
+          item.field
+        ).toLowerCase() ===
+        target
+      ) {
+
+        return String(
+          item.value || ""
+        );
+      }
+    }
+
+
+    return null;
+  }
+
+
+  /*
+   * 默认 Object 形式
+   */
 
   for (
     const key in headers
   ) {
 
     if (
-      key.toLowerCase() ===
+      String(key)
+        .toLowerCase() ===
       target
     ) {
 
@@ -892,17 +862,21 @@ function getHeader(
         )
       ) {
 
-        return String(
-          value[0] ||
-          ""
-        );
+        return value.length
+          ? String(value[0])
+          : null;
       }
 
 
-      return String(
-        value ||
-        ""
-      );
+      if (
+        value === undefined ||
+        value === null
+      ) {
+        return null;
+      }
+
+
+      return String(value);
     }
   }
 
@@ -911,11 +885,9 @@ function getHeader(
 }
 
 
-/*
- * =====================================================
- * 机场名称
- * =====================================================
- */
+/* =========================================================
+ * 自动识别机场名称
+ * ========================================================= */
 
 function getAirportName(
   headers
@@ -927,17 +899,12 @@ function getAirportName(
 
   const profileTitle =
     getHeader(
-
       headers,
-
       "profile-title"
-
     );
 
 
-  if (
-    profileTitle
-  ) {
+  if (profileTitle) {
 
     const title =
       decodeProfileTitle(
@@ -945,121 +912,53 @@ function getAirportName(
       );
 
 
-    if (
-      title
-    ) {
+    if (title) {
       return title;
     }
   }
 
 
   /*
-   * 2. Content-Disposition
+   * 2/3. Content-Disposition
    */
 
-  const cd =
+  const contentDisposition =
     getHeader(
-
       headers,
-
       "content-disposition"
-
     );
 
 
-  if (
-    !cd
-  ) {
-    return null;
-  }
+  if (contentDisposition) {
 
-
-  /*
-   * filename*=UTF-8''...
-   */
-
-  const extended =
-    cd.match(
-
-      /filename\*\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]+))/i
-
-    );
-
-
-  if (
-    extended
-  ) {
-
-    let name =
-      (
-        extended[1] ||
-        extended[2] ||
-        extended[3] ||
-        ""
-      ).trim();
-
-
-    const rfc5987 =
-      name.match(
-
-        /^[^']*'[^']*'(.*)$/
-
+    const filename =
+      getContentDispositionFilename(
+        contentDisposition
       );
 
 
-    if (
-      rfc5987
-    ) {
-      name =
-        rfc5987[1];
+    if (filename) {
+
+      return cleanFilename(
+        filename
+      );
     }
-
-
-    try {
-
-      name =
-        decodeURIComponent(
-          name
-        );
-
-    } catch (_) {}
-
-
-    return cleanFilename(
-      name
-    );
-  }
-
-
-  /*
-   * filename=
-   */
-
-  const normal =
-    cd.match(
-
-      /filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]+))/i
-
-    );
-
-
-  if (
-    normal
-  ) {
-
-    return cleanFilename(
-
-      normal[1] ||
-      normal[2] ||
-      normal[3]
-
-    );
   }
 
 
   return null;
 }
 
+
+/*
+ * Profile-Title 常见形式：
+ *
+ * Profile-Title: Lumina
+ *
+ * Profile-Title: base64:THVtaW5h
+ *
+ * 也兼容 URL encoded 文本。
+ */
 
 function decodeProfileTitle(
   value
@@ -1074,8 +973,13 @@ function decodeProfileTitle(
       );
 
 
+  if (!text) {
+    return null;
+  }
+
+
   /*
-   * base64:
+   * Base64
    */
 
   if (
@@ -1084,49 +988,50 @@ function decodeProfileTitle(
     )
   ) {
 
+    const base64 =
+      text
+        .replace(
+          /^base64:/i,
+          ""
+        )
+        .trim();
+
+
     try {
 
       return cleanTitle(
-
-        base64Utf8(
-
-          text
-            .replace(
-              /^base64:/i,
-              ""
-            )
-            .trim()
-
+        decodeBase64UTF8(
+          base64
         )
-
       );
 
-    } catch (_) {
+    } catch (error) {
 
       return null;
+
     }
   }
 
 
   /*
-   * URL encoded
+   * URL encoding
    */
 
-  try {
+  if (
+    text.indexOf("%") !== -1
+  ) {
 
-    if (
-      text.includes(
-        "%"
-      )
-    ) {
+    try {
 
       text =
         decodeURIComponent(
           text
         );
-    }
 
-  } catch (_) {}
+    } catch (error) {
+      // 保留原值
+    }
+  }
 
 
   return cleanTitle(
@@ -1135,44 +1040,148 @@ function decodeProfileTitle(
 }
 
 
-function cleanFilename(
+/* =========================================================
+ * Content-Disposition
+ * ========================================================= */
+
+function getContentDispositionFilename(
   value
 ) {
 
-  let text =
-    String(
-      value ||
+  const text =
+    String(value || "");
+
+
+  /*
+   * 优先 filename*
+   *
+   * filename*=UTF-8''Lumina
+   */
+
+  const extended =
+    text.match(
+
+      /filename\*\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]+))/i
+
+    );
+
+
+  if (extended) {
+
+    let filename =
+      (
+        extended[1] ||
+        extended[2] ||
+        extended[3] ||
+        ""
+      ).trim();
+
+
+    /*
+     * RFC 5987:
+     *
+     * UTF-8''filename
+     */
+
+    const encoded =
+      filename.match(
+
+        /^[^']*'[^']*'(.*)$/
+
+      );
+
+
+    if (encoded) {
+      filename =
+        encoded[1];
+    }
+
+
+    try {
+
+      filename =
+        decodeURIComponent(
+          filename
+        );
+
+    } catch (error) {
+      // 保留原值
+    }
+
+
+    if (filename) {
+      return filename;
+    }
+  }
+
+
+  /*
+   * 普通 filename=
+   */
+
+  const normal =
+    text.match(
+
+      /filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]+))/i
+
+    );
+
+
+  if (!normal) {
+    return null;
+  }
+
+
+  let filename =
+    (
+      normal[1] ||
+      normal[2] ||
+      normal[3] ||
       ""
     ).trim();
 
 
-  try {
+  if (
+    filename.indexOf("%") !== -1
+  ) {
 
-    if (
-      text.includes(
-        "%"
-      )
-    ) {
+    try {
 
-      text =
+      filename =
         decodeURIComponent(
-          text
+          filename
         );
-    }
 
-  } catch (_) {}
+    } catch (error) {
+      // 保留原值
+    }
+  }
+
+
+  return filename || null;
+}
+
+
+function cleanFilename(
+  value
+) {
+
+  const text =
+    String(
+      value || ""
+    )
+      .trim()
+      .replace(
+
+        /\.(yaml|yml|txt|conf|json)$/i,
+
+        ""
+
+      );
 
 
   return cleanTitle(
-
-    text.replace(
-
-      /\.(yaml|yml|txt|conf|json)$/i,
-
-      ""
-
-    )
-
+    text
   );
 }
 
@@ -1183,8 +1192,7 @@ function cleanTitle(
 
   const text =
     String(
-      value ||
-      ""
+      value || ""
     )
       .replace(
         /[\r\n\t]+/g,
@@ -1193,49 +1201,54 @@ function cleanTitle(
       .trim();
 
 
-  return (
-    text ||
-    null
-  );
+  return text || null;
 }
 
 
-/*
- * =====================================================
+/* =========================================================
  * Subscription-Userinfo
- * =====================================================
- */
+ * ========================================================= */
 
 function parseUserInfo(
-  value
+  header
 ) {
 
   const result =
     {};
 
 
+  const items =
+    String(header)
+      .split(";");
+
+
   for (
-    const item of
-    String(value)
-      .split(";")
+    let i = 0;
+    i < items.length;
+    i++
   ) {
 
-    const eq =
-      item.indexOf(
-        "="
-      );
+    const item =
+      items[i].trim();
 
 
-    if (
-      eq < 0
-    ) {
+    if (!item) {
+      continue;
+    }
+
+
+    const equalIndex =
+      item.indexOf("=");
+
+
+    if (equalIndex < 0) {
       continue;
     }
 
 
     /*
      * reset-day
-     * 自动归一化为
+     * ↓
      * reset_day
      */
 
@@ -1243,7 +1256,7 @@ function parseUserInfo(
       item
         .slice(
           0,
-          eq
+          equalIndex
         )
         .trim()
         .toLowerCase()
@@ -1253,12 +1266,12 @@ function parseUserInfo(
         );
 
 
-    const number =
+    const value =
       Number(
 
         item
           .slice(
-            eq + 1
+            equalIndex + 1
           )
           .trim()
 
@@ -1267,13 +1280,11 @@ function parseUserInfo(
 
     if (
       key &&
-      Number.isFinite(
-        number
-      )
+      Number.isFinite(value)
     ) {
 
       result[key] =
-        number;
+        value;
     }
   }
 
@@ -1282,45 +1293,314 @@ function parseUserInfo(
 }
 
 
-/*
- * =====================================================
+function validateTrafficInfo(
+  info
+) {
+
+  const required =
+    [
+      "upload",
+      "download",
+      "total"
+    ];
+
+
+  for (
+    let i = 0;
+    i < required.length;
+    i++
+  ) {
+
+    const key =
+      required[i];
+
+
+    if (
+      !Number.isFinite(
+        info[key]
+      ) ||
+      info[key] < 0
+    ) {
+
+      throw new Error(
+        "Subscription-Userinfo 缺少或无法解析 " +
+        key
+      );
+    }
+  }
+}
+
+
+/* =========================================================
+ * Panel 内容
+ * ========================================================= */
+
+function buildPanelContent(
+  info
+) {
+
+  const used =
+    info.upload +
+    info.download;
+
+
+  const total =
+    info.total;
+
+
+  const remaining =
+    Math.max(
+      total - used,
+      0
+    );
+
+
+  let remainingText;
+  let usedText;
+  let totalText;
+
+  let usedPercentText =
+    null;
+
+  let remainingPercentText =
+    null;
+
+
+  /*
+   * total > 0：
+   * 普通流量套餐
+   */
+
+  if (total > 0) {
+
+    remainingText =
+      formatBytes(
+        remaining
+      );
+
+
+    usedText =
+      formatBytes(
+        used
+      );
+
+
+    totalText =
+      formatBytes(
+        total
+      );
+
+
+    const usedPercent =
+      clamp(
+        used / total * 100,
+        0,
+        100
+      );
+
+
+    const remainingPercent =
+      100 -
+      usedPercent;
+
+
+    usedPercentText =
+      usedPercent.toFixed(1) +
+      "%";
+
+
+    remainingPercentText =
+      remainingPercent.toFixed(1) +
+      "%";
+
+  } else {
+
+    /*
+     * total=0：
+     * 常见实现中通常代表不限量。
+     */
+
+    remainingText =
+      "不限量";
+
+
+    usedText =
+      formatBytes(
+        used
+      );
+
+
+    totalText =
+      "不限量";
+  }
+
+
+  /*
+   * 到期时间
+   */
+
+  const expireDate =
+    (
+      Number.isFinite(
+        info.expire
+      ) &&
+      info.expire > 0
+    )
+      ? parseTimestamp(
+          info.expire
+        )
+      : null;
+
+
+  const expireText =
+    expireDate
+      ? formatDate(
+          expireDate
+        )
+      : "长期有效";
+
+
+  /*
+   * 重置日
+   *
+   * 优先读取非标准扩展字段：
+   *
+   * reset_day=
+   * reset-day=
+   *
+   * parseUserInfo 已将 "-" 转为 "_"。
+   *
+   * 若机场没有提供，
+   * fallback 为到期日期的“日”。
+   */
+
+  let resetDay =
+    null;
+
+
+  if (
+    isValidResetDay(
+      info.reset_day
+    )
+  ) {
+
+    resetDay =
+      info.reset_day;
+
+  } else if (
+    isValidResetDay(
+      info.resetday
+    )
+  ) {
+
+    resetDay =
+      info.resetday;
+
+  } else if (
+    expireDate
+  ) {
+
+    resetDay =
+      expireDate.getDate();
+
+  }
+
+
+  const resetText =
+    resetDay
+      ? "剩余 " +
+        getDaysUntilReset(
+          resetDay
+        ) +
+        " 天"
+
+      : "--";
+
+
+  /*
+   * 最终布局
+   */
+
+  let content =
+
+    "剩余：" +
+    remainingText;
+
+
+  if (
+    remainingPercentText
+  ) {
+
+    content +=
+      "（" +
+      remainingPercentText +
+      "）";
+  }
+
+
+  content +=
+
+    "\n已用：" +
+    usedText;
+
+
+  if (
+    usedPercentText
+  ) {
+
+    content +=
+      "（" +
+      usedPercentText +
+      "）";
+  }
+
+
+  content +=
+
+    "\n总量：" +
+    totalText +
+
+    "\n重置：" +
+    resetText +
+
+    "\n到期：" +
+    expireText;
+
+
+  return content;
+}
+
+
+/* =========================================================
  * 流量格式
- * =====================================================
- */
+ * ========================================================= */
 
 function formatBytes(
   bytes
 ) {
 
   if (
-    !Number.isFinite(
-      bytes
-    ) ||
+    !Number.isFinite(bytes) ||
     bytes < 0
   ) {
-
     return "--";
   }
 
 
-  if (
-    bytes === 0
-  ) {
-
+  if (bytes === 0) {
     return "0 B";
   }
 
 
-  const units = [
-
-    "B",
-    "KB",
-    "MB",
-    "GB",
-    "TB",
-    "PB"
-
-  ];
+  const units =
+    [
+      "B",
+      "KB",
+      "MB",
+      "GB",
+      "TB",
+      "PB"
+    ];
 
 
   const index =
@@ -1328,18 +1608,12 @@ function formatBytes(
 
       Math.floor(
 
-        Math.log(
-          bytes
-        ) /
-
-        Math.log(
-          1024
-        )
+        Math.log(bytes) /
+        Math.log(1024)
 
       ),
 
-      units.length -
-      1
+      units.length - 1
 
     );
 
@@ -1360,20 +1634,16 @@ function formatBytes(
 }
 
 
-/*
- * =====================================================
+/* =========================================================
  * 到期时间
- * =====================================================
- */
+ * ========================================================= */
 
 function parseTimestamp(
   value
 ) {
 
   let timestamp =
-    Number(
-      value
-    );
+    Number(value);
 
 
   if (
@@ -1382,14 +1652,12 @@ function parseTimestamp(
     ) ||
     timestamp <= 0
   ) {
-
     return null;
   }
 
 
   /*
-   * 通常是 Unix 秒。
-   * 同时兼容毫秒时间戳。
+   * Unix 秒 / 毫秒兼容
    */
 
   if (
@@ -1399,16 +1667,14 @@ function parseTimestamp(
 
     timestamp =
       Math.floor(
-        timestamp /
-        1000
+        timestamp / 1000
       );
   }
 
 
   const date =
     new Date(
-      timestamp *
-      1000
+      timestamp * 1000
     );
 
 
@@ -1425,51 +1691,44 @@ function formatDate(
 ) {
 
   return (
-
     date.getFullYear() +
-
     "-" +
-
     pad2(
-      date.getMonth() +
-      1
+      date.getMonth() + 1
     ) +
-
     "-" +
-
     pad2(
       date.getDate()
     )
+  );
+}
 
+
+/* =========================================================
+ * 重置日
+ * ========================================================= */
+
+function isValidResetDay(
+  value
+) {
+
+  return (
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 31
   );
 }
 
 
 /*
- * =====================================================
- * 重置日
- * =====================================================
+ * 计算距离下一次重置还有多少“日历天”。
+ *
+ * 若今天正好是重置日，
+ * 则认为本月重置已经发生，
+ * 计算下个月重置日。
  */
 
-function validResetDay(
-  day
-) {
-
-  return (
-
-    Number.isInteger(
-      day
-    ) &&
-
-    day >= 1 &&
-
-    day <= 31
-
-  );
-}
-
-
-function formatReset(
+function getDaysUntilReset(
   resetDay
 ) {
 
@@ -1477,151 +1736,130 @@ function formatReset(
     new Date();
 
 
-  const today =
-    new Date(
+  const todayYear =
+    now.getFullYear();
 
-      now.getFullYear(),
+  const todayMonth =
+    now.getMonth();
 
-      now.getMonth(),
-
-      now.getDate()
-
-    );
+  const todayDay =
+    now.getDate();
 
 
-  let year =
-    today.getFullYear();
+  let targetYear =
+    todayYear;
 
-  let month =
-    today.getMonth();
+  let targetMonth =
+    todayMonth;
 
 
-  let target =
-    resetDate(
-
-      year,
-
-      month,
-
+  let targetDay =
+    normalizeDay(
+      targetYear,
+      targetMonth,
       resetDay
-
     );
 
 
   /*
-   * 如果今天就是重置日，
-   * 认为本次重置已经发生，
-   * 计算下一次重置。
+   * 本月重置日已经到达或过去
    */
 
   if (
-    target <=
-    today
+    todayDay >=
+    targetDay
   ) {
 
-    month +=
-      1;
+    targetMonth++;
 
 
     if (
-      month > 11
+      targetMonth > 11
     ) {
 
-      month =
+      targetMonth =
         0;
 
-      year +=
-        1;
+      targetYear++;
+
     }
 
 
-    target =
-      resetDate(
-
-        year,
-
-        month,
-
+    targetDay =
+      normalizeDay(
+        targetYear,
+        targetMonth,
         resetDay
-
       );
   }
 
 
-  const days =
-    Math.max(
+  /*
+   * 用 UTC 仅计算日历天差，
+   * 避免 DST 导致 23/25 小时一天的问题。
+   */
 
-      0,
-
-      Math.ceil(
-
-        (
-          target -
-          today
-        ) /
-
-        86400000
-
-      )
-
+  const todayUTC =
+    Date.UTC(
+      todayYear,
+      todayMonth,
+      todayDay
     );
 
 
-  return (
-    "剩余 " +
-    days +
-    " 天"
+  const targetUTC =
+    Date.UTC(
+      targetYear,
+      targetMonth,
+      targetDay
+    );
+
+
+  return Math.round(
+    (
+      targetUTC -
+      todayUTC
+    ) /
+    86400000
   );
 }
 
 
-function resetDate(
+function normalizeDay(
   year,
   month,
-  day
+  desiredDay
 ) {
 
-  const maxDay =
+  const daysInMonth =
     new Date(
-
       year,
-
       month + 1,
-
       0
-
     ).getDate();
 
 
-  return new Date(
-
-    year,
-
-    month,
-
-    Math.min(
-      day,
-      maxDay
-    )
-
+  return Math.min(
+    desiredDay,
+    daysInMonth
   );
 }
 
 
-/*
- * =====================================================
+/* =========================================================
  * Base64 UTF-8
- * =====================================================
- *
- * 不依赖 engine=webview。
+ * ========================================================= */
+
+/*
+ * 不依赖浏览器 atob / TextDecoder，
+ * 因此 JSC / WebView 均可使用。
  */
 
-function base64Utf8(
+function decodeBase64UTF8(
   input
 ) {
 
-  const chars =
-
+  const alphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
     "abcdefghijklmnopqrstuvwxyz" +
     "0123456789+/";
@@ -1629,17 +1867,14 @@ function base64Utf8(
 
   let source =
     String(input)
-
       .replace(
-        /\s/g,
+        /\s+/g,
         ""
       )
-
       .replace(
         /-/g,
         "+"
       )
-
       .replace(
         /_/g,
         "/"
@@ -1647,12 +1882,9 @@ function base64Utf8(
 
 
   while (
-    source.length %
-    4
+    source.length % 4
   ) {
-
-    source +=
-      "=";
+    source += "=";
   }
 
 
@@ -1667,28 +1899,29 @@ function base64Utf8(
   ) {
 
     const a =
-      chars.indexOf(
+      alphabet.indexOf(
         source[i]
       );
 
+
     const b =
-      chars.indexOf(
+      alphabet.indexOf(
         source[i + 1]
       );
 
+
     const c =
-      source[i + 2] ===
-      "="
+      source[i + 2] === "="
         ? 0
-        : chars.indexOf(
+        : alphabet.indexOf(
             source[i + 2]
           );
 
+
     const d =
-      source[i + 3] ===
-      "="
+      source[i + 3] === "="
         ? 0
-        : chars.indexOf(
+        : alphabet.indexOf(
             source[i + 3]
           );
 
@@ -1701,84 +1934,64 @@ function base64Utf8(
     ) {
 
       throw new Error(
-        "Invalid Base64"
+        "无效的 Base64"
       );
     }
 
 
     const value =
-
-      (
-        a << 18
-      ) |
-
-      (
-        b << 12
-      ) |
-
-      (
-        c << 6
-      ) |
-
+      (a << 18) |
+      (b << 12) |
+      (c << 6) |
       d;
 
 
     bytes.push(
-
-      (
-        value >>
-        16
-      ) &
-      255
-
+      (value >> 16) &
+      0xff
     );
 
 
     if (
-      source[i + 2] !==
-      "="
+      source[i + 2] !== "="
     ) {
 
       bytes.push(
-
-        (
-          value >>
-          8
-        ) &
-        255
-
+        (value >> 8) &
+        0xff
       );
     }
 
 
     if (
-      source[i + 3] !==
-      "="
+      source[i + 3] !== "="
     ) {
 
       bytes.push(
-
         value &
-        255
-
+        0xff
       );
     }
   }
 
+
+  /*
+   * UTF-8 → JS String
+   */
 
   let encoded =
     "";
 
 
   for (
-    const byte of bytes
+    let i = 0;
+    i < bytes.length;
+    i++
   ) {
 
     encoded +=
-
       "%" +
-
-      byte
+      bytes[i]
         .toString(16)
         .padStart(
           2,
@@ -1787,17 +2000,43 @@ function base64Utf8(
   }
 
 
-  return decodeURIComponent(
-    encoded
-  );
+  try {
+
+    return decodeURIComponent(
+      encoded
+    );
+
+  } catch (error) {
+
+    /*
+     * 非 UTF-8 时 fallback
+     */
+
+    let fallback =
+      "";
+
+
+    for (
+      let i = 0;
+      i < bytes.length;
+      i++
+    ) {
+
+      fallback +=
+        String.fromCharCode(
+          bytes[i]
+        );
+    }
+
+
+    return fallback;
+  }
 }
 
 
-/*
- * =====================================================
+/* =========================================================
  * Utils
- * =====================================================
- */
+ * ========================================================= */
 
 function clamp(
   value,
@@ -1806,14 +2045,11 @@ function clamp(
 ) {
 
   return Math.min(
-
     Math.max(
       value,
       min
     ),
-
     max
-
   );
 }
 
@@ -1822,10 +2058,9 @@ function pad2(
   value
 ) {
 
-  return String(
-    value
-  ).padStart(
-    2,
-    "0"
-  );
+  return String(value)
+    .padStart(
+      2,
+      "0"
+    );
 }

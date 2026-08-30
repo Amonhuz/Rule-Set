@@ -1,19 +1,26 @@
 /*
  * Surge Subscription Info Panel
  *
- * 机场名称：来自 $input.panelName
  * 订阅地址：来自 $argument
+ *
+ * 机场名称识别优先级：
+ *   1. Profile-Title
+ *   2. Content-Disposition filename* / filename
+ *   3. $input.panelName
  *
  * Panel:
  *   机场名称
- *   剩余：xx.xx GB / xx.xx GB
- *   已用：xx.x%
- *   重置：剩余 xx 天
- *   到期：yyyy-mm-dd
+ *
+ *   剩余：326.47 GB（65.3%）
+ *   已用：173.53 GB（34.7%）
+ *   总量：500.00 GB
+ *   重置：剩余 12 天
+ *   到期：2026-12-31
  */
 
-const airportName =
-  typeof $input !== "undefined" && $input.panelName
+const fallbackName =
+  typeof $input !== "undefined" &&
+  $input.panelName
     ? $input.panelName
     : "订阅信息";
 
@@ -23,9 +30,14 @@ const subscriptionURL =
     : "";
 
 if (!subscriptionURL) {
-  finishError("未配置订阅地址");
+  finishError(
+    fallbackName,
+    "未配置订阅地址"
+  );
 } else {
-  fetchSubscriptionInfo(subscriptionURL);
+  fetchSubscriptionInfo(
+    subscriptionURL
+  );
 }
 
 
@@ -37,118 +49,490 @@ function fetchSubscriptionInfo(url) {
     }
   };
 
-  $httpClient.get(request, function (error, response, data) {
-    if (error) {
-      finishError("订阅请求失败\n" + error);
-      return;
-    }
-
-    if (!response) {
-      finishError("未收到订阅服务器响应");
-      return;
-    }
-
-    const status = Number(response.status || 0);
-
-    if (status < 200 || status >= 400) {
-      finishError("订阅服务器返回 HTTP " + status);
-      return;
-    }
-
-    const userInfo = getHeader(
-      response.headers,
-      "subscription-userinfo"
-    );
-
-    if (!userInfo) {
-      finishError("订阅响应中没有 Subscription-Userinfo");
-      return;
-    }
-
-    const info = parseUserInfo(userInfo);
-
-    if (
-      info.upload === undefined ||
-      info.download === undefined ||
-      info.total === undefined
+  $httpClient.get(
+    request,
+    function (
+      error,
+      response,
+      data
     ) {
-      finishError("无法解析订阅流量信息");
-      return;
-    }
-
-    const used = info.upload + info.download;
-    const total = info.total;
-    const remaining = Math.max(total - used, 0);
-
-    // 剩余流量
-    const remainingText =
-      total === 0
-        ? "不限量"
-        : formatBytes(remaining);
-
-    // 总流量
-    const totalText =
-      total === 0
-        ? "不限量"
-        : formatBytes(total);
-
-    // 已用百分比
-    let usedPercentText = "--";
-
-    if (total > 0) {
-      const percent = Math.min(
-        Math.max((used / total) * 100, 0),
-        100
-      );
-
-      usedPercentText = percent.toFixed(1) + "%";
-    }
-
-    // 到期时间
-    let expireText = "长期有效";
-    let resetText = "--";
-
-    if (info.expire !== undefined && info.expire > 0) {
-      const expireDate = parseTimestamp(info.expire);
-
-      if (expireDate) {
-        expireText = formatDate(expireDate);
-
-        /*
-         * Subscription-Userinfo 标准字段没有独立 reset_day。
-         * 默认使用到期日的“日”作为每月流量重置日。
-         *
-         * 例如：
-         * 到期时间 2027-06-18
-         * → 默认每月 18 日重置
-         */
-        const resetDay = expireDate.getDate();
-        const daysLeft = getResetDaysLeft(resetDay);
-
-        resetText = "剩余 " + daysLeft + " 天";
+      if (error) {
+        finishError(
+          fallbackName,
+          "订阅请求失败\n" + error
+        );
+        return;
       }
-    }
 
-    $done({
-      title: airportName,
-      content:
-        "剩余：" + remainingText + " / " + totalText +
-        "\n已用：" + usedPercentText +
-        "\n重置：" + resetText +
-        "\n到期：" + expireText
-    });
-  });
+      if (!response) {
+        finishError(
+          fallbackName,
+          "未收到订阅服务器响应"
+        );
+        return;
+      }
+
+      const status =
+        Number(response.status || 0);
+
+      if (
+        status < 200 ||
+        status >= 400
+      ) {
+        finishError(
+          fallbackName,
+          "订阅服务器返回 HTTP " +
+            status
+        );
+        return;
+      }
+
+      const headers =
+        response.headers || {};
+
+      /*
+       * 自动识别机场名称
+       */
+      const airportName =
+        getAirportName(
+          headers,
+          fallbackName
+        );
+
+      /*
+       * Subscription-Userinfo
+       */
+      const userInfo =
+        getHeader(
+          headers,
+          "subscription-userinfo"
+        );
+
+      if (!userInfo) {
+        finishError(
+          airportName,
+          "订阅响应中没有 Subscription-Userinfo"
+        );
+        return;
+      }
+
+      const info =
+        parseUserInfo(userInfo);
+
+      if (
+        info.upload === undefined ||
+        info.download === undefined ||
+        info.total === undefined
+      ) {
+        finishError(
+          airportName,
+          "无法解析订阅流量信息"
+        );
+        return;
+      }
+
+      /*
+       * 流量计算
+       */
+      const used =
+        info.upload +
+        info.download;
+
+      const total =
+        info.total;
+
+      const remaining =
+        Math.max(
+          total - used,
+          0
+        );
+
+      let remainingText;
+      let usedText;
+      let totalText;
+
+      let usedPercentText = "--";
+      let remainingPercentText =
+        "--";
+
+      if (total === 0) {
+        remainingText =
+          "不限量";
+
+        totalText =
+          "不限量";
+
+        usedText =
+          formatBytes(used);
+      } else {
+        remainingText =
+          formatBytes(remaining);
+
+        usedText =
+          formatBytes(used);
+
+        totalText =
+          formatBytes(total);
+
+        const usedPercent =
+          Math.min(
+            Math.max(
+              used /
+                total *
+                100,
+              0
+            ),
+            100
+          );
+
+        const remainingPercent =
+          Math.max(
+            100 -
+              usedPercent,
+            0
+          );
+
+        usedPercentText =
+          usedPercent.toFixed(1) +
+          "%";
+
+        remainingPercentText =
+          remainingPercent.toFixed(
+            1
+          ) + "%";
+      }
+
+      /*
+       * 到期时间 / 重置时间
+       */
+      let expireText =
+        "长期有效";
+
+      let resetText =
+        "--";
+
+      if (
+        info.expire !== undefined &&
+        info.expire > 0
+      ) {
+        const expireDate =
+          parseTimestamp(
+            info.expire
+          );
+
+        if (expireDate) {
+          expireText =
+            formatDate(
+              expireDate
+            );
+
+          /*
+           * Subscription-Userinfo
+           * 通常没有 reset_day。
+           *
+           * fallback：
+           * 使用到期日期的“日”
+           * 作为每月重置日。
+           */
+          const resetDay =
+            expireDate.getDate();
+
+          const daysLeft =
+            getResetDaysLeft(
+              resetDay
+            );
+
+          resetText =
+            "剩余 " +
+            daysLeft +
+            " 天";
+        }
+      }
+
+      /*
+       * 输出 Panel
+       */
+      $done({
+        title: airportName,
+
+        content:
+          "剩余：" +
+          remainingText +
+          (
+            total > 0
+              ? "（" +
+                remainingPercentText +
+                "）"
+              : ""
+          ) +
+
+          "\n已用：" +
+          usedText +
+          (
+            total > 0
+              ? "（" +
+                usedPercentText +
+                "）"
+              : ""
+          ) +
+
+          "\n总量：" +
+          totalText +
+
+          "\n重置：" +
+          resetText +
+
+          "\n到期：" +
+          expireText
+      });
+    }
+  );
 }
 
 
-function getHeader(headers, targetName) {
-  if (!headers) return null;
+/*
+ * =====================================================
+ * 机场名称
+ * =====================================================
+ */
 
-  const target = targetName.toLowerCase();
+function getAirportName(
+  headers,
+  fallback
+) {
+  /*
+   * 1. Profile-Title
+   */
+  const profileTitle =
+    getHeader(
+      headers,
+      "profile-title"
+    );
 
-  for (const key in headers) {
-    if (key.toLowerCase() === target) {
-      return String(headers[key]);
+  if (profileTitle) {
+    const decoded =
+      decodeProfileTitle(
+        profileTitle
+      );
+
+    if (decoded) {
+      return decoded;
+    }
+  }
+
+  /*
+   * 2. Content-Disposition
+   */
+  const contentDisposition =
+    getHeader(
+      headers,
+      "content-disposition"
+    );
+
+  if (contentDisposition) {
+    const filename =
+      getContentDispositionFilename(
+        contentDisposition
+      );
+
+    if (filename) {
+      return cleanupFilename(
+        filename
+      );
+    }
+  }
+
+  /*
+   * 3. Panel 名称
+   */
+  return fallback;
+}
+
+
+/*
+ * Profile-Title 常见格式：
+ *
+ * Profile-Title: ABC机场
+ *
+ * 或：
+ *
+ * Profile-Title:
+ * base64:QUJD5py65Zy6
+ */
+function decodeProfileTitle(
+  value
+) {
+  if (!value) {
+    return null;
+  }
+
+  let text =
+    String(value).trim();
+
+  if (!text) {
+    return null;
+  }
+
+  /*
+   * base64:
+   */
+  if (
+    /^base64:/i.test(text)
+  ) {
+    const encoded =
+      text.replace(
+        /^base64:/i,
+        ""
+      ).trim();
+
+    try {
+      const decoded =
+        base64ToUtf8(
+          encoded
+        );
+
+      if (decoded) {
+        return decoded.trim();
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /*
+   * 某些服务器可能返回
+   * URL encoded 标题
+   */
+  if (
+    text.indexOf("%") !== -1
+  ) {
+    try {
+      text =
+        decodeURIComponent(
+          text
+        );
+    } catch (e) {
+      // 保留原始内容
+    }
+  }
+
+  /*
+   * 去掉包裹引号
+   */
+  text =
+    text.replace(
+      /^["']|["']$/g,
+      ""
+    );
+
+  return (
+    text.trim() ||
+    null
+  );
+}
+
+
+/*
+ * =====================================================
+ * Content-Disposition
+ * =====================================================
+ */
+
+function getContentDispositionFilename(
+  value
+) {
+  if (!value) {
+    return null;
+  }
+
+  const text =
+    String(value);
+
+  /*
+   * 优先 filename*
+   *
+   * 例如：
+   * filename*=UTF-8''ABC%E6%9C%BA%E5%9C%BA
+   */
+  const extendedMatch =
+    text.match(
+      /filename\*\s*=\s*([^;]+)/i
+    );
+
+  if (extendedMatch) {
+    let filename =
+      extendedMatch[1]
+        .trim()
+        .replace(
+          /^["']|["']$/g,
+          ""
+        );
+
+    /*
+     * RFC 5987:
+     *
+     * UTF-8''xxx
+     */
+    const charsetMatch =
+      filename.match(
+        /^[^']*'[^']*'(.*)$/
+      );
+
+    if (charsetMatch) {
+      filename =
+        charsetMatch[1];
+    }
+
+    try {
+      filename =
+        decodeURIComponent(
+          filename
+        );
+    } catch (e) {
+      // 保留原字符串
+    }
+
+    if (filename) {
+      return filename;
+    }
+  }
+
+  /*
+   * 普通 filename=
+   */
+  const filenameMatch =
+    text.match(
+      /filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]*))/i
+    );
+
+  if (
+    filenameMatch
+  ) {
+    let filename =
+      filenameMatch[1] ||
+      filenameMatch[2] ||
+      filenameMatch[3];
+
+    if (filename) {
+      filename =
+        filename.trim();
+
+      try {
+        if (
+          filename.indexOf(
+            "%"
+          ) !== -1
+        ) {
+          filename =
+            decodeURIComponent(
+              filename
+            );
+        }
+      } catch (e) {
+        // 保留原字符串
+      }
+
+      return filename;
     }
   }
 
@@ -156,141 +540,98 @@ function getHeader(headers, targetName) {
 }
 
 
-function parseUserInfo(value) {
+/*
+ * Content-Disposition 有时返回：
+ *
+ * filename="ABC机场.yaml"
+ *
+ * 作为 Panel 标题时，
+ * 去掉常见订阅文件扩展名。
+ */
+function cleanupFilename(
+  filename
+) {
+  if (!filename) {
+    return null;
+  }
+
+  let name =
+    String(filename).trim();
+
+  name =
+    name.replace(
+      /\.(yaml|yml|txt|conf|json)$/i,
+      ""
+    );
+
+  return (
+    name.trim() ||
+    null
+  );
+}
+
+
+/*
+ * =====================================================
+ * HTTP Headers
+ * =====================================================
+ */
+
+function getHeader(
+  headers,
+  targetName
+) {
+  if (!headers) {
+    return null;
+  }
+
+  const target =
+    targetName.toLowerCase();
+
+  for (
+    const key in headers
+  ) {
+    if (
+      key.toLowerCase() ===
+      target
+    ) {
+      return String(
+        headers[key]
+      );
+    }
+  }
+
+  return null;
+}
+
+
+/*
+ * =====================================================
+ * Subscription-Userinfo
+ * =====================================================
+ */
+
+function parseUserInfo(
+  value
+) {
   const result = {};
 
-  value.split(";").forEach(function (item) {
-    const parts = item.trim().split("=");
+  String(value)
+    .split(";")
+    .forEach(
+      function (item) {
+        const parts =
+          item
+            .trim()
+            .split("=");
 
-    if (parts.length < 2) return;
+        if (
+          parts.length < 2
+        ) {
+          return;
+        }
 
-    const key = parts[0].trim().toLowerCase();
-    const number = Number(
-      parts.slice(1).join("=").trim()
-    );
-
-    if (!Number.isNaN(number)) {
-      result[key] = number;
-    }
-  });
-
-  return result;
-}
-
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return "--";
-  }
-
-  const units = [
-    "B",
-    "KB",
-    "MB",
-    "GB",
-    "TB",
-    "PB"
-  ];
-
-  if (bytes === 0) {
-    return "0 B";
-  }
-
-  const index = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1
-  );
-
-  const value =
-    bytes / Math.pow(1024, index);
-
-  return value.toFixed(2) + " " + units[index];
-}
-
-
-function parseTimestamp(timestamp) {
-  let value = Number(timestamp);
-
-  if (!Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-
-  // 兼容毫秒时间戳
-  if (value > 1000000000000) {
-    value = Math.floor(value / 1000);
-  }
-
-  const date = new Date(value * 1000);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date;
-}
-
-
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-
-  return year + "-" + month + "-" + day;
-}
-
-
-function getResetDaysLeft(resetDay) {
-  const now = new Date();
-
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
-
-  let target;
-
-  if (today < resetDay) {
-    // 本月尚未到重置日
-    const daysInMonth =
-      new Date(year, month + 1, 0).getDate();
-
-    target = new Date(
-      year,
-      month,
-      Math.min(resetDay, daysInMonth)
-    );
-  } else {
-    // 本月重置日已过，计算下个月
-    const nextMonthDays =
-      new Date(year, month + 2, 0).getDate();
-
-    target = new Date(
-      year,
-      month + 1,
-      Math.min(resetDay, nextMonthDays)
-    );
-  }
-
-  const todayStart = new Date(
-    year,
-    month,
-    today
-  );
-
-  return Math.ceil(
-    (target - todayStart) / 86400000
-  );
-}
-
-
-function pad(value) {
-  return String(value).padStart(2, "0");
-}
-
-
-function finishError(message) {
-  $done({
-    title: airportName,
-    content: message,
-    style: "error"
-  });
-}
+        const key =
+          parts[0]
+            .trim()
+            .

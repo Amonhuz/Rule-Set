@@ -100,9 +100,8 @@ if (!SUB_URL) {
     }
 
     $done({
-  title: $input.panelName,
-  content,
-  style
-});
+      content,
+      style
+    });
   });
 }

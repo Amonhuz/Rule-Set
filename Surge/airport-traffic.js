@@ -35,7 +35,7 @@ function fetchSubscriptionInfo(url) {
   const request = {
     url: url,
     headers: {
-      "User-Agent": "Surge"
+      "User-Agent": "Quantumult X"
     }
   };
 

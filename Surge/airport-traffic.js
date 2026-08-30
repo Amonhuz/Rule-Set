@@ -4,7 +4,12 @@
  * 机场名称：来自 $input.panelName
  * 订阅地址：来自 $argument
  *
- * GitHub JS 中无需填写任何机场相关信息。
+ * Panel:
+ *   机场名称
+ *   剩余：xx.xx GB / xx.xx GB
+ *   已用：xx.x%
+ *   重置：剩余 xx 天
+ *   到期：yyyy-mm-dd
  */
 
 const airportName =
@@ -72,28 +77,65 @@ function fetchSubscriptionInfo(url) {
     }
 
     const used = info.upload + info.download;
+    const total = info.total;
+    const remaining = Math.max(total - used, 0);
 
-    let remainingText;
+    // 剩余流量
+    const remainingText =
+      total === 0
+        ? "不限量"
+        : formatBytes(remaining);
 
-    if (info.total === 0) {
-      remainingText = "不限量";
-    } else {
-      const remaining = Math.max(info.total - used, 0);
-      remainingText = formatBytes(remaining);
+    // 总流量
+    const totalText =
+      total === 0
+        ? "不限量"
+        : formatBytes(total);
+
+    // 已用百分比
+    let usedPercentText = "--";
+
+    if (total > 0) {
+      const percent = Math.min(
+        Math.max((used / total) * 100, 0),
+        100
+      );
+
+      usedPercentText = percent.toFixed(1) + "%";
     }
 
-    let expireText = "未提供";
+    // 到期时间
+    let expireText = "长期有效";
+    let resetText = "--";
 
     if (info.expire !== undefined && info.expire > 0) {
-      expireText = formatExpireTime(info.expire);
+      const expireDate = parseTimestamp(info.expire);
+
+      if (expireDate) {
+        expireText = formatDate(expireDate);
+
+        /*
+         * Subscription-Userinfo 标准字段没有独立 reset_day。
+         * 默认使用到期日的“日”作为每月流量重置日。
+         *
+         * 例如：
+         * 到期时间 2027-06-18
+         * → 默认每月 18 日重置
+         */
+        const resetDay = expireDate.getDate();
+        const daysLeft = getResetDaysLeft(resetDay);
+
+        resetText = "剩余 " + daysLeft + " 天";
+      }
     }
 
     $done({
       title: airportName,
       content:
-        "剩余流量：" + remainingText +
-        "\n到期时间：" + expireText,
-      style: "info"
+        "剩余：" + remainingText + " / " + totalText +
+        "\n已用：" + usedPercentText +
+        "\n重置：" + resetText +
+        "\n到期：" + expireText
     });
   });
 }
@@ -123,7 +165,9 @@ function parseUserInfo(value) {
     if (parts.length < 2) return;
 
     const key = parts[0].trim().toLowerCase();
-    const number = Number(parts.slice(1).join("=").trim());
+    const number = Number(
+      parts.slice(1).join("=").trim()
+    );
 
     if (!Number.isNaN(number)) {
       result[key] = number;
@@ -136,63 +180,104 @@ function parseUserInfo(value) {
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) {
-    return "未知";
+    return "--";
   }
 
-  const KB = 1024;
-  const MB = KB * 1024;
-  const GB = MB * 1024;
-  const TB = GB * 1024;
+  const units = [
+    "B",
+    "KB",
+    "MB",
+    "GB",
+    "TB",
+    "PB"
+  ];
 
-  if (bytes >= TB) {
-    return (bytes / TB).toFixed(2) + " TB";
+  if (bytes === 0) {
+    return "0 B";
   }
 
-  if (bytes >= GB) {
-    return (bytes / GB).toFixed(2) + " GB";
-  }
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1
+  );
 
-  if (bytes >= MB) {
-    return (bytes / MB).toFixed(2) + " MB";
-  }
+  const value =
+    bytes / Math.pow(1024, index);
 
-  if (bytes >= KB) {
-    return (bytes / KB).toFixed(2) + " KB";
-  }
-
-  return bytes.toFixed(0) + " B";
+  return value.toFixed(2) + " " + units[index];
 }
 
 
-function formatExpireTime(timestamp) {
-  // Subscription-Userinfo 的 expire 通常为 Unix 秒。
-  // 同时兼容误传毫秒时间戳的情况。
-  if (timestamp > 1000000000000) {
-    timestamp = Math.floor(timestamp / 1000);
+function parseTimestamp(timestamp) {
+  let value = Number(timestamp);
+
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
   }
 
-  const date = new Date(timestamp * 1000);
+  // 兼容毫秒时间戳
+  if (value > 1000000000000) {
+    value = Math.floor(value / 1000);
+  }
+
+  const date = new Date(value * 1000);
 
   if (Number.isNaN(date.getTime())) {
-    return "未知";
+    return null;
   }
 
+  return date;
+}
+
+
+function formatDate(date) {
   const year = date.getFullYear();
   const month = pad(date.getMonth() + 1);
   const day = pad(date.getDate());
-  const hour = pad(date.getHours());
-  const minute = pad(date.getMinutes());
 
-  return (
-    year +
-    "-" +
-    month +
-    "-" +
-    day +
-    " " +
-    hour +
-    ":" +
-    minute
+  return year + "-" + month + "-" + day;
+}
+
+
+function getResetDaysLeft(resetDay) {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const today = now.getDate();
+
+  let target;
+
+  if (today < resetDay) {
+    // 本月尚未到重置日
+    const daysInMonth =
+      new Date(year, month + 1, 0).getDate();
+
+    target = new Date(
+      year,
+      month,
+      Math.min(resetDay, daysInMonth)
+    );
+  } else {
+    // 本月重置日已过，计算下个月
+    const nextMonthDays =
+      new Date(year, month + 2, 0).getDate();
+
+    target = new Date(
+      year,
+      month + 1,
+      Math.min(resetDay, nextMonthDays)
+    );
+  }
+
+  const todayStart = new Date(
+    year,
+    month,
+    today
+  );
+
+  return Math.ceil(
+    (target - todayStart) / 86400000
   );
 }
 

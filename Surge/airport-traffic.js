@@ -19,9 +19,11 @@
  *   4. $input.panelName
  *
  * 显示：
- *   Lumina ｜ 500 GB
- *   已用：34.7% ｜ 剩余：326.47 GB
- *   重置：12 天 ｜ 到期：2027-06-18
+ *   Lumina ｜ 100 GB
+ *   已用：41.6%    ｜    剩余：58.39 GB
+ *   重置：26 天    ｜    到期：2026-09-26
+ *
+ * 正文使用 \t 制表符尝试对齐两行分隔符。
  */
 
 
@@ -62,11 +64,11 @@ const DEFAULT_TITLE = "订阅信息";
     // 5. 自动识别机场名称
     const airportName = getAirportName(response.headers) || panelName;
 
-    // 6. 解析流量
+    // 6. 解析并验证流量信息
     const info = parseUserInfo(userInfo);
     validateTrafficInfo(info);
 
-    // 7. 输出
+    // 7. 输出 Panel
     const panel = buildPanel(airportName, info);
 
     $done({
@@ -168,8 +170,7 @@ function findPolicyPath(profile, targetGroupName) {
  *   policy-path="https://example.com/sub"
  *   policy-path='https://example.com/sub'
  *
- * 以及：
- *   policy-path=..., update-interval=3600
+ * 后面也可以继续存在其他 Proxy Group 参数。
  */
 function extractPolicyPath(definition) {
   const match = String(definition).match(
@@ -219,7 +220,7 @@ function httpGet(options) {
  *   1. Quantumult X
  *   2. Surge
  *
- * 成功获取 Subscription-Userinfo 后立即停止。
+ * 获取到 Subscription-Userinfo 后立即停止。
  */
 async function fetchSubscription(url) {
   let lastError = null;
@@ -379,7 +380,7 @@ function getContentDispositionFilename(value) {
     if (filename) return filename;
   }
 
-  // filename=
+  // 普通 filename=
   const normal = text.match(
     /filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]+))/i
   );
@@ -461,13 +462,10 @@ function buildPanel(airportName, info) {
   let remainingText;
 
   /*
-   * 普通流量套餐：
+   * 普通套餐：
    *
-   * Title：
-   *   Lumina ｜ 500 GB
-   *
-   * Content：
-   *   已用：34.7% ｜ 剩余：326.47 GB
+   *   Lumina ｜ 100 GB
+   *   已用：41.6%    ｜    剩余：58.39 GB
    */
   if (total > 0) {
     const usedPercent = clamp((used / total) * 100, 0, 100);
@@ -479,7 +477,8 @@ function buildPanel(airportName, info) {
   } else {
     /*
      * total=0 常见情况下表示不限量。
-     * 此时无法计算有意义的使用百分比，
+     *
+     * 不存在有意义的使用百分比，
      * 因此显示实际已使用流量。
      */
     totalText = "不限量";
@@ -515,11 +514,20 @@ function buildPanel(airportName, info) {
     ? getDaysUntilReset(resetDay) + " 天"
     : "--";
 
+  /*
+   * 正文使用 Tab 制表位：
+   *
+   *   已用：41.6% \t｜\t 剩余：58.39 GB
+   *   重置：26 天 \t｜\t 到期：2026-09-26
+   *
+   * 如果 Surge 的文本控件按标准 tab stop 渲染，
+   * 两个 ｜ 会落在同一制表位置。
+   */
   return {
     title: airportName + " ｜ " + totalText,
     content:
-      "已用：" + usedText + " ｜ 剩余：" + remainingText +
-      "\n重置：" + resetText + " ｜ 到期：" + expireText
+      "已用：" + usedText + "\t｜\t剩余：" + remainingText +
+      "\n重置：" + resetText + "\t｜\t到期：" + expireText
   };
 }
 
@@ -530,13 +538,13 @@ function buildPanel(airportName, info) {
 
 /*
  * compact=false：
- *   326.47 GB
+ *   39.13 GB
  *
  * compact=true：
- *   500.00 GB → 500 GB
+ *   100.00 GB → 100 GB
  *   1.50 TB   → 1.5 TB
  *
- * compact 只用于套餐总量，减少标题视觉冗余。
+ * compact 仅用于标题中的套餐总量。
  */
 function formatBytes(bytes, compact = false) {
   if (!Number.isFinite(bytes) || bytes < 0) return "--";
@@ -551,14 +559,9 @@ function formatBytes(bytes, compact = false) {
 
   const value = bytes / Math.pow(1024, index);
 
-  if (!compact) {
-    return value.toFixed(2) + " " + units[index];
-  }
+  if (!compact) return value.toFixed(2) + " " + units[index];
 
-  // 总量自动去掉无意义的小数 0
-  const formatted = parseFloat(value.toFixed(2)).toString();
-
-  return formatted + " " + units[index];
+  return parseFloat(value.toFixed(2)).toString() + " " + units[index];
 }
 
 
